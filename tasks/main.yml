@@ -1,0 +1,62 @@
+- name: Add first non-root user
+  user:
+    name: "{{ user_name }}"
+    password: "{{ user_pass }}"
+    group: sudo
+    shell: /bin/bash
+  become: yes
+
+- name: Add authorized key
+  authorized_key:
+    user: "{{ user_name }}"
+    state: present
+    key: "{{ user_key }}"
+  become: yes
+
+- name: Add required packages
+  apt:
+    update_cache: yes
+    pkg:
+      - fail2ban
+      - ufw
+  become: yes
+
+- name: Allow SSH connections
+  ufw:
+    rule: allow
+    name: OpenSSH
+  become: yes
+
+- name: Deny all other incoming traffic by default
+  ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+  become: yes
+
+- name: Test ssh key connectivity
+  local_action: shell ssh -o PasswordAuthentication=no {{ user_name }}@{{ inventory_hostname }} ls
+  changed_when: false
+
+- name: Disable root and password login
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: "{{ item.state }}"
+  with_items:
+    - regexp: "^PasswordAuthentication"
+      line: "PasswordAuthentication no"
+      state: present
+    - regexp: "^PermitRootLogin"
+      line: "PermitRootLogin no"
+      state: present
+    - regexp: "^PasswordAuthentication yes"
+      line: ""
+      state: absent
+    - regexp: "^PermitRootLogin yes"
+      line: ""
+      state: absent
+  become: yes
+  notify: restart sshd
+
